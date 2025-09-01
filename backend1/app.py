@@ -228,3 +228,4 @@ if __name__ == "__main__":
     print(f"Starting server with model: {MODEL}")
     server = WebSocketServer(("0.0.0.0", 5000), Resource({"/realtime": RealtimeApp}))
     server.serve_forever()
+
