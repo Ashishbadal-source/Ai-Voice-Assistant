@@ -877,7 +877,8 @@ function App() {
       micWorklet.port.onmessage = (event) => {
         if (ws.readyState === WebSocket.OPEN && event.data) {
           const base64data = arrayBufferToBase64(event.data);
-          ws.send(JSON.stringify({ type: "audio_chunk", data: base64data })); 
+          // ws.send(JSON.stringify({ type: "audio_chunk", data: base64data })); 
+          ws.send(JSON.stringify({ type: "commit" }));
           log("📤 Sent mic audio chunk to server");
         }
       };
