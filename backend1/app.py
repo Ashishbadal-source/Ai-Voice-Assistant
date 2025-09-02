@@ -351,7 +351,9 @@ async def gemini_session_runner(input_queue: Queue, output_queue: Queue):
 
                 elif kind == "commit":
                     # ✅ commit + ask model to respond
-                    await session.send({"type": "input_audio_buffer.commit"})
+                    await session.send({"type": "input_audio_buffer.commit"})  
+                    # await session.send(types.InputAudioBufferCommitEvent())
+                    # await session.send(types.ResponseCreateEvent())
                     await session.send({"type": "response.create"})
 
                 elif kind == "text":
