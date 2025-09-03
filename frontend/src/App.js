@@ -804,7 +804,8 @@ function App() {
 
     log("🚀 Starting session...");
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${scheme}://${window.location.hostname}:5000/realtime`);
+    // const ws = new WebSocket(`${scheme}://${window.location.hostname}:5000/realtime`);
+    const ws = new WebSocket("wss://ai-voice-assistant-3.onrender.com/realtime");
     wsRef.current = ws;
 
     ws.onopen = () => {
