@@ -450,18 +450,25 @@ class RealtimeApp(WebSocketApplication):
         finally:
             print("✅ Gemini session cleaned up")
 
+
+def index(environ, start_response):
+    start_response("200 OK", [("Content-Type", "text/plain")])
+    return [b"OK"]
+
+
 # -------------------------
 # Run server (Step 3: quiet “No apps defined”)
 # -------------------------
 if __name__ == "__main__":
-    print(f"Starting server with model: {MODEL}")
+    PORT = int(os.environ.get("PORT", 5000))  # Render needs this
+    print(f"Starting server on port {PORT} with model: {MODEL}")
+
     server = WebSocketServer(
-        ("0.0.0.0",int(os.getenv("PORT", 5000))),
+        ("0.0.0.0", PORT),
         Resource({
-            "/": lambda environ, start_response: (
-                start_response("200 OK", [("Content-Type", "text/plain")]) or [b"OK"]
-            ),
+            "/": index,
             "/realtime": RealtimeApp,
         })
     )
+
     server.serve_forever()
