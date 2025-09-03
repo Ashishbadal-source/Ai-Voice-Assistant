@@ -875,14 +875,30 @@ function App() {
       // Tell worklet: 16 kHz mono PCM Int16
       micWorklet.port.postMessage({ targetSampleRate: 16000 });
 
+      // micWorklet.port.onmessage = (event) => {
+      //   if (ws.readyState === WebSocket.OPEN && event.data) {
+      //     const base64data = arrayBufferToBase64(event.data);
+      //     // ws.send(JSON.stringify({ type: "audio_chunk", data: base64data })); 
+      //     ws.send(JSON.stringify({ type: "commit" }));
+      //     log("📤 Sent mic audio chunk to server");
+      //   }
+      // };
       micWorklet.port.onmessage = (event) => {
-        if (ws.readyState === WebSocket.OPEN && event.data) {
-          const base64data = arrayBufferToBase64(event.data);
-          // ws.send(JSON.stringify({ type: "audio_chunk", data: base64data })); 
-          ws.send(JSON.stringify({ type: "commit" }));
+      if (ws.readyState === WebSocket.OPEN && event.data) {
+      const base64data = arrayBufferToBase64(event.data);
+      // ✅ send audio chunks
+      ws.send(JSON.stringify({ type: "audio_chunk", data: base64data }));
           log("📤 Sent mic audio chunk to server");
+          }
+      };
+      const commitTurn = () => {
+     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "commit" }));
+          log("📤 Commit sent to server");
         }
       };
+
+
 
       micSource.connect(micWorklet);
       workletNodeRef.current = micWorklet;
