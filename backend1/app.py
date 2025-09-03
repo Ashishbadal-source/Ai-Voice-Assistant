@@ -456,7 +456,7 @@ class RealtimeApp(WebSocketApplication):
 if __name__ == "__main__":
     print(f"Starting server with model: {MODEL}")
     server = WebSocketServer(
-        ("0.0.0.0", 5000),
+        ("0.0.0.0",int(os.getenv("PORT", 5000))),
         Resource({
             "/": lambda environ, start_response: (
                 start_response("200 OK", [("Content-Type", "text/plain")]) or [b"OK"]
