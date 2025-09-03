@@ -342,26 +342,33 @@ async def gemini_session_runner(input_queue: Queue, output_queue: Queue):
                 if kind == "audio":
                     audio_bytes = item.get("bytes")
                     if isinstance(audio_bytes, (bytes, bytearray)):
-                        await session.send({
-                            "type": "input_audio_buffer.append",
-                            "audio": b64_encode(audio_bytes),
-                        })
+                        # await session.send({
+                        #     "type": "input_audio_buffer.append",
+                        #     "audio": b64_encode(audio_bytes),
+                        # })
+                        await session.input_audio_buffer.append(audio_bytes)
                     else:
                         print("⚠️ Skipping invalid audio")
 
                 elif kind == "commit":
                     # ✅ commit + ask model to respond
-                    await session.send({"type": "input_audio_buffer.commit"})  
+                    # await session.send({"type": "input_audio_buffer.commit"})  
+                    #  await session.send({"type": "response.create"})
+                     
                     # await session.send(types.InputAudioBufferCommitEvent())
                     # await session.send(types.ResponseCreateEvent())
-                    await session.send({"type": "response.create"})
+                   
+                    await session.input_audio_buffer.commit()
+                    await session.response.create()
 
                 elif kind == "text":
                     text_value = item.get("text", "")
                     if text_value:
-                        await session.send({"type": "input_text", "text": text_value})
-                        await session.send({"type": "response.create"})
+                        # await session.send({"type": "input_text", "text": text_value})
+                        # await session.send({"type": "response.create"})
 
+                        await session.input_text.send(text_value)
+                        await session.response.create()
             # ---------------- Cleanup ----------------
             recv_task.cancel()
 
