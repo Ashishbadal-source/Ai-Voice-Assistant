@@ -17,6 +17,6 @@
 
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-google-genai==0.3.0
 python-dotenv==1.0.0
 websockets>=13.0,<15.0
+google-genai>=0.6.0

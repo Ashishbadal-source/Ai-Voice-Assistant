@@ -480,8 +480,6 @@
 
 
 
-
-
 import asyncio
 import os
 import base64
@@ -616,44 +614,42 @@ class GeminiSession:
                 traceback.print_exc()
 
     async def send_audio(self, audio_bytes: bytes):
-        """Send audio to Gemini"""
+        """Buffer audio chunks until commit is called"""
         if not self.is_connected or not self.session:
             return
 
         try:
-            # Add to buffer
             self.audio_buffer.extend(audio_bytes)
-
         except Exception as e:
             print(f"💥 Error buffering audio: {e}")
             traceback.print_exc()
 
     async def commit(self):
-        """Commit the current turn and request response"""
+        """Commit buffered audio and request response"""
         if not self.is_connected or not self.session or not self.audio_buffer:
             return
 
         try:
-            # Send buffered audio
             audio_blob = genai_types.Blob(
-                data=bytes(self.audio_buffer), mime_type="audio/webm;codecs=opus"
+                data=bytes(self.audio_buffer),
+                mime_type="audio/webm;codecs=opus"
             )
 
-            # ✅ Wrap inside InputContentEvent
+            # ✅ FIX: wrap inside InputContentEvent (not Content directly)
             await self.session.send(
-                genai_types.Content(
-                    # content=genai_types.Content(
+                genai_types.InputContentEvent(
+                    content=genai_types.Content(
                         parts=[genai_types.Part(inline_data=audio_blob)],
                         role="user"
-                    # )
+                    )
                 )
             )
 
             await self.session.send(genai_types.ResponseCreateEvent())
 
-            # Clear buffer
             self.audio_buffer = bytearray()
             print("📤 Committed audio to Gemini")
+
         except Exception as e:
             print(f"💥 Error committing to Gemini: {e}")
             traceback.print_exc()
@@ -664,7 +660,6 @@ class GeminiSession:
             return
 
         try:
-            # ✅ Wrap inside InputContentEvent
             await self.session.send(
                 genai_types.InputContentEvent(
                     content=genai_types.Content(
@@ -708,10 +703,8 @@ async def websocket_endpoint(websocket: WebSocket):
     gemini_session = GeminiSession(websocket)
 
     try:
-        # Start Gemini session
         await gemini_session.start()
 
-        # Handle messages from client
         async for data in websocket.iter_text():
             try:
                 message = json.loads(data)
@@ -725,8 +718,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await gemini_session.commit()
 
                 elif msg_type == "text":
-                    text_data = message.get("data", "")
-                    await gemini_session.send_text(text_data)
+                    await gemini_session.send_text(message.get("data", ""))
 
                 elif msg_type == "close":
                     break
