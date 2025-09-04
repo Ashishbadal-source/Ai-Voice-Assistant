@@ -477,6 +477,11 @@
 #             "/realtime": RealtimeApp,
 #         })
 #     )
+
+
+
+
+
 import asyncio
 import os
 import base64
@@ -634,12 +639,16 @@ class GeminiSession:
                 data=bytes(self.audio_buffer), mime_type="audio/webm;codecs=opus"
             )
 
-            # Create content with audio
-            content = genai_types.Content(
-                parts=[genai_types.Part(inline_data=audio_blob)], role="user"
+            # ✅ Wrap inside InputContentEvent
+            await self.session.send(
+                genai_types.InputContentEvent(
+                    content=genai_types.Content(
+                        parts=[genai_types.Part(inline_data=audio_blob)],
+                        role="user"
+                    )
+                )
             )
 
-            await self.session.send(content)
             await self.session.send(genai_types.ResponseCreateEvent())
 
             # Clear buffer
@@ -655,11 +664,15 @@ class GeminiSession:
             return
 
         try:
-            # Create text content
-            text_content = genai_types.Content(
-                parts=[genai_types.Part(text=text)], role="user"
+            # ✅ Wrap inside InputContentEvent
+            await self.session.send(
+                genai_types.InputContentEvent(
+                    content=genai_types.Content(
+                        parts=[genai_types.Part(text=text)],
+                        role="user"
+                    )
+                )
             )
-            await self.session.send(text_content)
             await self.session.send(genai_types.ResponseCreateEvent())
         except Exception as e:
             print(f"💥 Error sending text to Gemini: {e}")
