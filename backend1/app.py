@@ -639,9 +639,9 @@ class GeminiSession:
                 data=bytes(self.audio_buffer), mime_type="audio/webm;codecs=opus"
             )
 
-            # ✅ Wrap inside LiveClientRealtimeInput
+            # ✅ Wrap inside InputContentEvent
             await self.session.send(
-                genai_types.LiveClientRealtimeInput(
+                genai_types.InputContentEvent(
                     content=genai_types.Content(
                         parts=[genai_types.Part(inline_data=audio_blob)],
                         role="user"
@@ -664,9 +664,9 @@ class GeminiSession:
             return
 
         try:
-            # ✅ Wrap inside LiveClientRealtimeInput
+            # ✅ Wrap inside InputContentEvent
             await self.session.send(
-                genai_types.LiveClientRealtimeInput(
+                genai_types.InputContentEvent(
                     content=genai_types.Content(
                         parts=[genai_types.Part(text=text)],
                         role="user"
