@@ -482,7 +482,6 @@
 
 
 
-
 import asyncio
 import os
 import base64
@@ -495,6 +494,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from google import genai
+from google.genai import types as genai_types
 
 # Load environment
 load_dotenv()
@@ -537,6 +537,7 @@ class GeminiSession:
             
         except Exception as e:
             print(f"💥 Error connecting to Gemini: {e}")
+            traceback.print_exc()
             raise
     
     async def _receive_loop(self):
@@ -586,46 +587,60 @@ class GeminiSession:
         """Send audio to Gemini"""
         try:
             if self.session:
-                await self.session.send(
-                    genai.types.InputAudioBufferAppendEvent(
-                        audio=genai.types.Blob(
-                            data=audio_bytes,
-                            mime_type="audio/pcm;rate=16000;encoding=s16"
-                        )
-                    )
+                # Create audio blob
+                audio_blob = genai_types.Blob(
+                    data=audio_bytes,
+                    mime_type="audio/pcm;rate=16000;encoding=s16"
                 )
+                
+                # Send audio using the appropriate method for this version
+                await self.session.send(audio_blob)
         except Exception as e:
             print(f"💥 Error sending audio to Gemini: {e}")
+            traceback.print_exc()
     
     async def commit(self):
         """Commit the current turn and request response"""
         try:
             if self.session:
-                await self.session.send(genai.types.InputAudioBufferCommitEvent())
-                await self.session.send(genai.types.ResponseCreateEvent())
+                # For newer versions, we might need to use a different approach
+                # This will depend on the exact API changes
+                await self.session.send(genai_types.ResponseCreateEvent())
                 print("📤 Committed turn to Gemini")
         except Exception as e:
             print(f"💥 Error committing to Gemini: {e}")
+            traceback.print_exc()
     
     async def send_text(self, text: str):
         """Send text to Gemini"""
         try:
             if self.session:
-                await self.session.send(genai.types.InputTextEvent(text=text))
-                await self.session.send(genai.types.ResponseCreateEvent())
+                # Create text content
+                text_content = genai_types.Content(
+                    parts=[genai_types.Part(text=text)],
+                    role="user"
+                )
+                await self.session.send(text_content)
+                await self.session.send(genai_types.ResponseCreateEvent())
         except Exception as e:
             print(f"💥 Error sending text to Gemini: {e}")
+            traceback.print_exc()
     
     async def close(self):
         """Clean up the session"""
         try:
             if self.receive_task:
                 self.receive_task.cancel()
+                try:
+                    await self.receive_task
+                except asyncio.CancelledError:
+                    pass
             if self.session:
-                await self.session.__aexit__(None, None, None)
+                await self.session.close()
             print("✅ Gemini session closed")
         except Exception as e:
             print(f"💥 Error closing session: {e}")
+            traceback.print_exc()
 
 @app.websocket("/realtime")
 async def websocket_endpoint(websocket: WebSocket):
@@ -662,6 +677,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 print(f"📲 Invalid JSON: {data}")
             except Exception as e:
                 print(f"💥 Error handling message: {e}")
+                traceback.print_exc()
                 
     except WebSocketDisconnect:
         print("🛑 WebSocket client disconnected")
