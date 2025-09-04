@@ -10,13 +10,23 @@
 
 # python-dotenv==1.0.1
 # google-genai==0.3.0
-gevent==24.11.1
-gevent-websocket==0.10.1
-# fastapi
-uvicorn[standard]
+
+
+
+# gevent==24.11.1
+# gevent-websocket==0.10.1
+# # fastapi
+# uvicorn[standard]
+
+# fastapi==0.104.1
+# uvicorn[standard]==0.24.0
+# python-dotenv==1.0.0
+# websockets>=13.0,<15.0
+# google-genai>=0.6.0
+
 
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
+google-genai==0.3.0
 python-dotenv==1.0.0
 websockets>=13.0,<15.0
-google-genai>=0.6.0
