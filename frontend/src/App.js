@@ -748,12 +748,264 @@
 
 
 
+// import React, { useState, useEffect, useRef } from "react";
+
+// function App() {
+//   const [response, setResponse] = useState("");
+//   const [logMessages, setLogMessages] = useState([]);
+//   const [isConnected, setIsConnected] = useState(false);
+
+//   const wsRef = useRef(null);
+//   const audioCtxRef = useRef(null);
+//   const micStreamRef = useRef(null);
+//   const micSourceRef = useRef(null);
+//   const workletNodeRef = useRef(null);
+//   const playbackWorkletRef = useRef(null);
+
+//   function log(...args) {
+//     setLogMessages((prev) => [...prev, args.join(" ")]);
+//     console.log(...args);
+//   }
+
+//   // 🔹 ArrayBuffer → Base64
+//   function arrayBufferToBase64(buffer) {
+//     let binary = "";
+//     const bytes = new Uint8Array(buffer);
+//     const chunkSize = 0x8000;
+//     for (let i = 0; i < bytes.length; i += chunkSize) {
+//       const chunk = bytes.subarray(i, i + chunkSize);
+//       binary += String.fromCharCode.apply(null, chunk);
+//     }
+//     return btoa(binary);
+//   }
+
+//   // 🔹 Base64 (Int16 PCM) → Float32 for playback
+//   function base64ToFloat32(base64) {
+//     const binary = atob(base64);
+//     const bytes = new Uint8Array(binary.length);
+//     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+//     const int16 = new Int16Array(bytes.buffer);
+//     const out = new Float32Array(int16.length);
+//     for (let i = 0; i < int16.length; i++) out[i] = int16[i] / 0x8000;
+//     return out;
+//   }
+
+//   // ---------------------------
+//   // 🚀 Start Session
+//   // ---------------------------
+//   const start = async () => {
+//     if (wsRef.current && wsRef.current.readyState === WebSocket.CONNECTING) {
+//       log("⚠️ Connection already in progress...");
+//       return;
+//     }
+//     if (audioCtxRef.current && audioCtxRef.current.state === "running") {
+//       await stop();
+//     }
+
+//     log("🚀 Starting session...");
+//     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+//     // const ws = new WebSocket(`${scheme}://${window.location.hostname}:5000/realtime`);
+//     const ws = new WebSocket("wss://ai-assistant-a8md.onrender.com/realtime");
+//     wsRef.current = ws;
+
+//     ws.onopen = () => {
+//       log("✅ WebSocket connected to backend");
+//       setIsConnected(true);
+//     };
+//     ws.onerror = (e) => {
+//       log("❌ WebSocket error:", e?.message || "Connection failed");
+//       setIsConnected(false);
+//     };
+//     ws.onclose = () => {
+//       log("⚠️ WebSocket closed");
+//       setIsConnected(false);
+//     };
+
+//     // 🔹 Create AudioContext for playback
+//     const audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+//       sampleRate: 24000,
+//     });
+//     audioCtxRef.current = audioCtx;
+//     log("🎧 AudioContext created (24kHz for playback)");
+
+//     // 🔹 Load Playback Worklet
+//     log("⏳ Loading playback worklet...");
+//     await audioCtx.audioWorklet.addModule("playback-processor.js");
+//     const playbackWorklet = new AudioWorkletNode(audioCtx, "playback-processor");
+//     playbackWorklet.connect(audioCtx.destination);
+//     playbackWorkletRef.current = playbackWorklet;
+//     log("✅ Playback worklet ready");
+
+//     // 🔹 Handle Messages from server
+//     ws.onmessage = (event) => {
+//       try {
+//         const data = JSON.parse(event.data);
+
+//         if (data.type === "audio") {
+//           log("🎵 Received audio chunk from server");
+//           const float32 = base64ToFloat32(data.data);
+//           if (playbackWorkletRef.current) {
+//             playbackWorkletRef.current.port.postMessage(float32);
+//           }
+//         } else if (data.type === "text") {
+//           log("💬 Received text response:", data.data);
+//           setResponse(data.data);
+//         } else {
+//           log("⚠️ Unknown server message:", event.data);
+//         }
+//       } catch {
+//         log("❌ Invalid JSON message from server:", event.data);
+//       }
+//     };
+
+//     // 🔹 Setup Microphone
+//     try {
+//       log("🎤 Requesting microphone access...");
+//       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+//       micStreamRef.current = micStream;
+//       log("✅ Microphone access granted");
+
+//       const micSource = audioCtx.createMediaStreamSource(micStream);
+//       micSourceRef.current = micSource;
+
+//       log("⏳ Loading mic worklet...");
+//       await audioCtx.audioWorklet.addModule("mic-processor.js");
+//       const micWorklet = new AudioWorkletNode(audioCtx, "mic-processor");
+
+//       // Tell worklet: 16 kHz mono PCM Int16
+//       micWorklet.port.postMessage({ targetSampleRate: 16000 });
+
+//       // micWorklet.port.onmessage = (event) => {
+//       //   if (ws.readyState === WebSocket.OPEN && event.data) {
+//       //     const base64data = arrayBufferToBase64(event.data);
+//       //     // ws.send(JSON.stringify({ type: "audio_chunk", data: base64data })); 
+//       //     ws.send(JSON.stringify({ type: "commit" }));
+//       //     log("📤 Sent mic audio chunk to server");
+//       //   }
+//       // };
+//       micWorklet.port.onmessage = (event) => {
+//       if (ws.readyState === WebSocket.OPEN && event.data) {
+//       const base64data = arrayBufferToBase64(event.data);
+//       // ✅ send audio chunks
+//       ws.send(JSON.stringify({ type: "audio_chunk", data: base64data }));
+//           log("📤 Sent mic audio chunk to server");
+//           }
+//       };
+//       const commitTurn = () => {
+//      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+//       wsRef.current.send(JSON.stringify({ type: "commit" }));
+//           log("📤 Commit sent to server");
+//         }
+//       };
+
+
+
+//       micSource.connect(micWorklet);
+//       workletNodeRef.current = micWorklet;
+//       log("✅ Mic + worklet initialized");
+//     } catch (err) {
+//       log("❌ Error initializing microphone:", err);
+//     }
+//   };
+
+//   // ---------------------------
+//   // 🛑 Stop Session
+//   // ---------------------------
+//   const stop = async () => {
+//     log("🛑 Stopping session...");
+//     setIsConnected(false);
+//     try {
+//       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+//         wsRef.current.send(JSON.stringify({ type: "close" }));
+//         wsRef.current.close();
+//         log("✅ WebSocket closed by client");
+//       }
+//       wsRef.current = null;
+
+//       if (workletNodeRef.current) {
+//         workletNodeRef.current.port.onmessage = null;
+//         workletNodeRef.current.disconnect();
+//         workletNodeRef.current = null;
+//         log("🗑️ Mic worklet disconnected");
+//       }
+//       if (playbackWorkletRef.current) {
+//         playbackWorkletRef.current.disconnect();
+//         playbackWorkletRef.current = null;
+//         log("🗑️ Playback worklet disconnected");
+//       }
+//       if (micSourceRef.current) {
+//         micSourceRef.current.disconnect();
+//         micSourceRef.current = null;
+//         log("🗑️ Mic source disconnected");
+//       }
+//       if (micStreamRef.current) {
+//         micStreamRef.current.getTracks().forEach((t) => t.stop());
+//         micStreamRef.current = null;
+//         log("🛑 Mic stream stopped");
+//       }
+//       if (audioCtxRef.current) {
+//         await audioCtxRef.current.close();
+//         audioCtxRef.current = null;
+//         log("🛑 AudioContext closed");
+//       }
+//     } catch (e) {
+//       log("❌ Stop error:", e);
+//     }
+//     log("🛑 Session fully stopped.");
+//   };
+
+//   // ---------------------------
+//   // 📤 Commit Turn (optional)
+//   // ---------------------------
+//   const commitTurn = () => {
+//     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+//       wsRef.current.send(JSON.stringify({ type: "commit" }));
+//       log("📤 Commit sent to server");
+//     }
+//   };
+
+//   useEffect(() => {
+//     return () => {
+//       if (wsRef.current) stop();
+//     };
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//   }, []);
+
+//   return (
+//     <div className="App">
+//       <h1>🎙️ Realtime Gemini Voice Chat</h1>
+//       <button onClick={start} disabled={isConnected}>Start</button>
+//       <button onClick={stop} disabled={!isConnected}>Stop</button>
+//       <button onClick={commitTurn} disabled={!isConnected}>Commit Turn</button>
+//       <h2>💬 Text Response:</h2>
+//       <div>{response}</div>
+//       <h2>📜 Debug Logs:</h2>
+//       <pre>{logMessages.join("\n")}</pre>
+//     </div>
+//   );
+// }
+
+// export default App;
+
+
+
+
+
+
+
+
+
+
+
+
+
 import React, { useState, useEffect, useRef } from "react";
 
 function App() {
   const [response, setResponse] = useState("");
   const [logMessages, setLogMessages] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [isListening, setIsListening] = useState(false);
 
   const wsRef = useRef(null);
   const audioCtxRef = useRef(null);
@@ -763,7 +1015,8 @@ function App() {
   const playbackWorkletRef = useRef(null);
 
   function log(...args) {
-    setLogMessages((prev) => [...prev, args.join(" ")]);
+    const message = args.join(" ");
+    setLogMessages((prev) => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
     console.log(...args);
   }
 
@@ -781,13 +1034,18 @@ function App() {
 
   // 🔹 Base64 (Int16 PCM) → Float32 for playback
   function base64ToFloat32(base64) {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const int16 = new Int16Array(bytes.buffer);
-    const out = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) out[i] = int16[i] / 0x8000;
-    return out;
+    try {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const int16 = new Int16Array(bytes.buffer);
+      const out = new Float32Array(int16.length);
+      for (let i = 0; i < int16.length; i++) out[i] = int16[i] / 0x8000;
+      return out;
+    } catch (error) {
+      log("Error decoding audio:", error);
+      return new Float32Array(0);
+    }
   }
 
   // ---------------------------
@@ -803,65 +1061,78 @@ function App() {
     }
 
     log("🚀 Starting session...");
-    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    // const ws = new WebSocket(`${scheme}://${window.location.hostname}:5000/realtime`);
-    const ws = new WebSocket("wss://ai-assistant-a8md.onrender.com/realtime");
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      log("✅ WebSocket connected to backend");
-      setIsConnected(true);
-    };
-    ws.onerror = (e) => {
-      log("❌ WebSocket error:", e?.message || "Connection failed");
-      setIsConnected(false);
-    };
-    ws.onclose = () => {
-      log("⚠️ WebSocket closed");
-      setIsConnected(false);
-    };
-
-    // 🔹 Create AudioContext for playback
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-      sampleRate: 24000,
-    });
-    audioCtxRef.current = audioCtx;
-    log("🎧 AudioContext created (24kHz for playback)");
-
-    // 🔹 Load Playback Worklet
-    log("⏳ Loading playback worklet...");
-    await audioCtx.audioWorklet.addModule("playback-processor.js");
-    const playbackWorklet = new AudioWorkletNode(audioCtx, "playback-processor");
-    playbackWorklet.connect(audioCtx.destination);
-    playbackWorkletRef.current = playbackWorklet;
-    log("✅ Playback worklet ready");
-
-    // 🔹 Handle Messages from server
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        if (data.type === "audio") {
-          log("🎵 Received audio chunk from server");
-          const float32 = base64ToFloat32(data.data);
-          if (playbackWorkletRef.current) {
-            playbackWorkletRef.current.port.postMessage(float32);
-          }
-        } else if (data.type === "text") {
-          log("💬 Received text response:", data.data);
-          setResponse(data.data);
-        } else {
-          log("⚠️ Unknown server message:", event.data);
-        }
-      } catch {
-        log("❌ Invalid JSON message from server:", event.data);
-      }
-    };
-
-    // 🔹 Setup Microphone
+    setResponse("");
+    
     try {
+      // Create WebSocket connection
+      const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${scheme}://${window.location.hostname}:5000/realtime`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        log("✅ WebSocket connected to backend");
+        setIsConnected(true);
+      };
+      
+      ws.onerror = (e) => {
+        log("❌ WebSocket error:", e?.message || "Connection failed");
+        setIsConnected(false);
+      };
+      
+      ws.onclose = (event) => {
+        log("⚠️ WebSocket closed:", event.code, event.reason);
+        setIsConnected(false);
+        setIsListening(false);
+      };
+
+      // 🔹 Create AudioContext for playback (24kHz matches Gemini output)
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: 24000,
+      });
+      audioCtxRef.current = audioCtx;
+      log("🎧 AudioContext created (24kHz for playback)");
+
+      // 🔹 Load Playback Worklet
+      log("⏳ Loading playback worklet...");
+      await audioCtx.audioWorklet.addModule("playback-processor.js");
+      const playbackWorklet = new AudioWorkletNode(audioCtx, "playback-processor");
+      playbackWorklet.connect(audioCtx.destination);
+      playbackWorkletRef.current = playbackWorklet;
+      log("✅ Playback worklet ready");
+
+      // 🔹 Handle Messages from server
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === "audio") {
+            log("🎵 Received audio chunk from server");
+            const float32 = base64ToFloat32(data.data);
+            if (playbackWorkletRef.current && float32.length > 0) {
+              playbackWorkletRef.current.port.postMessage(float32);
+            }
+          } else if (data.type === "text") {
+            log("💬 Received text response:", data.data);
+            setResponse(prev => prev + " " + data.data);
+          } else {
+            log("⚠️ Unknown server message type:", data.type);
+          }
+        } catch (error) {
+          log("❌ Error parsing server message:", error, event.data);
+        }
+      };
+
+      // 🔹 Setup Microphone
       log("🎤 Requesting microphone access...");
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const micStream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000, // Request 16kHz if possible
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
       micStreamRef.current = micStream;
       log("✅ Microphone access granted");
 
@@ -872,39 +1143,29 @@ function App() {
       await audioCtx.audioWorklet.addModule("mic-processor.js");
       const micWorklet = new AudioWorkletNode(audioCtx, "mic-processor");
 
-      // Tell worklet: 16 kHz mono PCM Int16
-      micWorklet.port.postMessage({ targetSampleRate: 16000 });
+      // Configure worklet with current sample rate and target
+      micWorklet.port.postMessage({ 
+        sampleRate: audioCtx.sampleRate,
+        targetSampleRate: 16000 
+      });
 
-      // micWorklet.port.onmessage = (event) => {
-      //   if (ws.readyState === WebSocket.OPEN && event.data) {
-      //     const base64data = arrayBufferToBase64(event.data);
-      //     // ws.send(JSON.stringify({ type: "audio_chunk", data: base64data })); 
-      //     ws.send(JSON.stringify({ type: "commit" }));
-      //     log("📤 Sent mic audio chunk to server");
-      //   }
-      // };
       micWorklet.port.onmessage = (event) => {
-      if (ws.readyState === WebSocket.OPEN && event.data) {
-      const base64data = arrayBufferToBase64(event.data);
-      // ✅ send audio chunks
-      ws.send(JSON.stringify({ type: "audio_chunk", data: base64data }));
-          log("📤 Sent mic audio chunk to server");
-          }
-      };
-      const commitTurn = () => {
-     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "commit" }));
-          log("📤 Commit sent to server");
+        if (ws.readyState === WebSocket.OPEN && event.data && event.data.byteLength > 0) {
+          const base64data = arrayBufferToBase64(event.data);
+          ws.send(JSON.stringify({ type: "audio_chunk", data: base64data }));
+          // log("📤 Sent mic audio chunk to server"); // Too verbose, comment out
         }
       };
 
-
-
       micSource.connect(micWorklet);
       workletNodeRef.current = micWorklet;
-      log("✅ Mic + worklet initialized");
+      setIsListening(true);
+      log("✅ Mic + worklet initialized and streaming");
+
     } catch (err) {
-      log("❌ Error initializing microphone:", err);
+      log("❌ Error during startup:", err);
+      setIsConnected(false);
+      setIsListening(false);
     }
   };
 
@@ -914,6 +1175,8 @@ function App() {
   const stop = async () => {
     log("🛑 Stopping session...");
     setIsConnected(false);
+    setIsListening(false);
+    
     try {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: "close" }));
@@ -928,21 +1191,25 @@ function App() {
         workletNodeRef.current = null;
         log("🗑️ Mic worklet disconnected");
       }
+      
       if (playbackWorkletRef.current) {
         playbackWorkletRef.current.disconnect();
         playbackWorkletRef.current = null;
         log("🗑️ Playback worklet disconnected");
       }
+      
       if (micSourceRef.current) {
         micSourceRef.current.disconnect();
         micSourceRef.current = null;
         log("🗑️ Mic source disconnected");
       }
+      
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach((t) => t.stop());
         micStreamRef.current = null;
         log("🛑 Mic stream stopped");
       }
+      
       if (audioCtxRef.current) {
         await audioCtxRef.current.close();
         audioCtxRef.current = null;
@@ -955,13 +1222,20 @@ function App() {
   };
 
   // ---------------------------
-  // 📤 Commit Turn (optional)
+  // 📤 Commit Turn (manual trigger for response)
   // ---------------------------
   const commitTurn = () => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "commit" }));
-      log("📤 Commit sent to server");
+      log("📤 Commit sent to server - requesting response");
+    } else {
+      log("⚠️ Cannot commit: WebSocket not connected");
     }
+  };
+
+  // Clear logs
+  const clearLogs = () => {
+    setLogMessages([]);
   };
 
   useEffect(() => {
@@ -972,15 +1246,107 @@ function App() {
   }, []);
 
   return (
-    <div className="App">
+    <div style={{ fontFamily: "Arial, sans-serif", padding: "20px", maxWidth: "800px" }}>
       <h1>🎙️ Realtime Gemini Voice Chat</h1>
-      <button onClick={start} disabled={isConnected}>Start</button>
-      <button onClick={stop} disabled={!isConnected}>Stop</button>
-      <button onClick={commitTurn} disabled={!isConnected}>Commit Turn</button>
-      <h2>💬 Text Response:</h2>
-      <div>{response}</div>
-      <h2>📜 Debug Logs:</h2>
-      <pre>{logMessages.join("\n")}</pre>
+      
+      <div style={{ marginBottom: "20px" }}>
+        <button 
+          onClick={start} 
+          disabled={isConnected}
+          style={{ 
+            marginRight: "10px", 
+            padding: "10px 20px",
+            backgroundColor: isConnected ? "#ccc" : "#4CAF50",
+            color: "white",
+            border: "none",
+            borderRadius: "5px",
+            cursor: isConnected ? "not-allowed" : "pointer"
+          }}
+        >
+          {isConnected ? "🟢 Connected" : "Start"}
+        </button>
+        
+        <button 
+          onClick={stop} 
+          disabled={!isConnected}
+          style={{ 
+            marginRight: "10px", 
+            padding: "10px 20px",
+            backgroundColor: !isConnected ? "#ccc" : "#f44336",
+            color: "white",
+            border: "none",
+            borderRadius: "5px",
+            cursor: !isConnected ? "not-allowed" : "pointer"
+          }}
+        >
+          Stop
+        </button>
+        
+        <button 
+          onClick={commitTurn} 
+          disabled={!isConnected}
+          style={{ 
+            marginRight: "10px",
+            padding: "10px 20px",
+            backgroundColor: !isConnected ? "#ccc" : "#2196F3",
+            color: "white",
+            border: "none",
+            borderRadius: "5px",
+            cursor: !isConnected ? "not-allowed" : "pointer"
+          }}
+        >
+          Commit Turn
+        </button>
+
+        {isListening && (
+          <span style={{ color: "green", marginLeft: "10px" }}>
+            🎤 Listening...
+          </span>
+        )}
+      </div>
+
+      <div style={{ marginBottom: "20px" }}>
+        <h2>💬 Gemini Response:</h2>
+        <div style={{ 
+          border: "1px solid #ddd", 
+          padding: "10px", 
+          minHeight: "60px",
+          backgroundColor: "#f9f9f9",
+          borderRadius: "5px"
+        }}>
+          {response || "No response yet..."}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: "10px" }}>
+          <h2 style={{ margin: 0, marginRight: "10px" }}>📜 Debug Logs:</h2>
+          <button 
+            onClick={clearLogs}
+            style={{ 
+              padding: "5px 10px",
+              backgroundColor: "#ff9800",
+              color: "white",
+              border: "none",
+              borderRadius: "3px",
+              cursor: "pointer"
+            }}
+          >
+            Clear Logs
+          </button>
+        </div>
+        <pre style={{ 
+          backgroundColor: "#f5f5f5", 
+          padding: "10px", 
+          borderRadius: "5px",
+          maxHeight: "300px", 
+          overflow: "auto",
+          fontSize: "12px",
+          whiteSpace: "pre-wrap"
+        }}>
+          {logMessages.length > 0 ? logMessages.join("\n") : "No logs yet..."}
+        </pre>
+      </div>
     </div>
   );
 }
