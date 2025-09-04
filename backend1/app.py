@@ -479,6 +479,9 @@
 #     )
 
 #     server.serve_forever()
+
+
+
 import asyncio
 import os
 import base64
@@ -515,8 +518,6 @@ class GeminiSession:
         self.client = genai.Client(api_key=GOOGLE_API_KEY)
         self.session = None
         self.receive_task = None
-        self.audio_buffer = bytearray()
-        self.is_connected = False
         
     async def start(self):
         """Start the Gemini session"""
@@ -528,8 +529,7 @@ class GeminiSession:
         }
         
         try:
-            self.session = await self.client.aio.live.connect(model=MODEL, config=config)
-            self.is_connected = True
+            self.session = await self.client.aio.live.connect(model=MODEL, config=config).__aenter__()
             print("✅ Connected to Gemini API")
             
             # Start receiving responses from Gemini
@@ -544,18 +544,14 @@ class GeminiSession:
         """Receive responses from Gemini and send to WebSocket"""
         try:
             async for resp in self.session.receive():
-                if not self.is_connected:
-                    break
-                    
+                print(f"🔄 Received from Gemini: {type(resp)}")
+                
                 # Handle raw audio data
                 if hasattr(resp, 'data') and resp.data:
-                    try:
-                        await self.websocket.send_json({
-                            "type": "audio", 
-                            "data": b64_encode(resp.data)
-                        })
-                    except Exception as e:
-                        print(f"💥 Error sending audio to client: {e}")
+                    await self.websocket.send_json({
+                        "type": "audio", 
+                        "data": b64_encode(resp.data)
+                    })
                     continue
 
                 # Handle server content
@@ -566,99 +562,72 @@ class GeminiSession:
                     if hasattr(sc, 'model_turn') and sc.model_turn and sc.model_turn.parts:
                         for part in sc.model_turn.parts:
                             if hasattr(part, 'text') and part.text:
-                                try:
-                                    await self.websocket.send_json({
-                                        "type": "text", 
-                                        "data": part.text
-                                    })
-                                except Exception as e:
-                                    print(f"💥 Error sending text to client: {e}")
+                                await self.websocket.send_json({
+                                    "type": "text", 
+                                    "data": part.text
+                                })
                             if hasattr(part, 'inline_data') and part.inline_data and part.inline_data.data:
-                                try:
-                                    await self.websocket.send_json({
-                                        "type": "audio", 
-                                        "data": b64_encode(part.inline_data.data)
-                                    })
-                                except Exception as e:
-                                    print(f"💥 Error sending inline audio to client: {e}")
+                                await self.websocket.send_json({
+                                    "type": "audio", 
+                                    "data": b64_encode(part.inline_data.data)
+                                })
 
                     # Output transcription
                     if hasattr(sc, 'output_transcription') and sc.output_transcription and sc.output_transcription.text:
-                        try:
-                            await self.websocket.send_json({
-                                "type": "text", 
-                                "data": sc.output_transcription.text
-                            })
-                        except Exception as e:
-                            print(f"💥 Error sending transcription to client: {e}")
+                        await self.websocket.send_json({
+                            "type": "text", 
+                            "data": sc.output_transcription.text
+                        })
                         
         except Exception as e:
-            if self.is_connected:
-                print(f"💥 Error in receive loop: {e}")
-                traceback.print_exc()
+            print(f"💥 Error in receive loop: {e}")
+            traceback.print_exc()
     
     async def send_audio(self, audio_bytes: bytes):
         """Send audio to Gemini"""
-        if not self.is_connected or not self.session:
-            return
-            
         try:
-            # Add to buffer
-            self.audio_buffer.extend(audio_bytes)
+            if self.session:
+                # Create audio blob
+                audio_blob = genai_types.Blob(
+                    data=audio_bytes,
+                    mime_type="audio/pcm;rate=16000;encoding=s16"
+                )
                 
+                # Send audio using the appropriate method for this version
+                await self.session.send(audio_blob)
         except Exception as e:
-            print(f"💥 Error buffering audio: {e}")
+            print(f"💥 Error sending audio to Gemini: {e}")
             traceback.print_exc()
     
     async def commit(self):
         """Commit the current turn and request response"""
-        if not self.is_connected or not self.session or not self.audio_buffer:
-            return
-            
         try:
-            # Send buffered audio
-            audio_blob = genai_types.Blob(
-                data=bytes(self.audio_buffer),
-                mime_type="audio/webm;codecs=opus"
-            )
-            
-            # Create content with audio
-            content = genai_types.Content(
-                parts=[genai_types.Part(inline_data=audio_blob)],
-                role="user"
-            )
-            
-            await self.session.send(content)
-            await self.session.send(genai_types.ResponseCreateEvent())
-            
-            # Clear buffer
-            self.audio_buffer = bytearray()
-            print("📤 Committed audio to Gemini")
+            if self.session:
+                # For newer versions, we might need to use a different approach
+                # This will depend on the exact API changes
+                await self.session.send(genai_types.ResponseCreateEvent())
+                print("📤 Committed turn to Gemini")
         except Exception as e:
             print(f"💥 Error committing to Gemini: {e}")
             traceback.print_exc()
     
     async def send_text(self, text: str):
         """Send text to Gemini"""
-        if not self.is_connected or not self.session:
-            return
-            
         try:
-            # Create text content
-            text_content = genai_types.Content(
-                parts=[genai_types.Part(text=text)],
-                role="user"
-            )
-            await self.session.send(text_content)
-            await self.session.send(genai_types.ResponseCreateEvent())
+            if self.session:
+                # Create text content
+                text_content = genai_types.Content(
+                    parts=[genai_types.Part(text=text)],
+                    role="user"
+                )
+                await self.session.send(text_content)
+                await self.session.send(genai_types.ResponseCreateEvent())
         except Exception as e:
             print(f"💥 Error sending text to Gemini: {e}")
             traceback.print_exc()
     
     async def close(self):
         """Clean up the session"""
-        self.is_connected = False
-        
         try:
             if self.receive_task:
                 self.receive_task.cancel()
@@ -666,9 +635,6 @@ class GeminiSession:
                     await self.receive_task
                 except asyncio.CancelledError:
                     pass
-                except Exception as e:
-                    print(f"💥 Error waiting for receive task: {e}")
-                    
             if self.session:
                 await self.session.close()
             print("✅ Gemini session closed")
