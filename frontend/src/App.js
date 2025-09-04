@@ -1424,7 +1424,8 @@ function App() {
       // Create WebSocket connection
       const scheme = window.location.protocol === "https:" ? "wss" : "ws";
       const port = process.env.NODE_ENV === 'development' ? ':5000' : '';
-      const ws = new WebSocket(`${scheme}://${window.location.hostname}${port}/realtime`);
+      // const ws = new WebSocket(`${scheme}://${window.location.hostname}${port}/realtime`);
+      const ws = new WebSocket("https://ai-assistant-a8md.onrender.com/realtime");
       wsRef.current = ws;
 
       ws.onopen = () => {
