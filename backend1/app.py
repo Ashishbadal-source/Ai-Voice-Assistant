@@ -641,11 +641,11 @@ class GeminiSession:
 
             # ✅ Wrap inside InputContentEvent
             await self.session.send(
-                genai_types.InputContentEvent(
-                    content=genai_types.Content(
+                genai_types.Content(
+                    # content=genai_types.Content(
                         parts=[genai_types.Part(inline_data=audio_blob)],
                         role="user"
-                    )
+                    # )
                 )
             )
 
