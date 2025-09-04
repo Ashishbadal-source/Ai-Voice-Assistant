@@ -1355,7 +1355,6 @@
 // export default App;
 
 
-
 import React, { useState, useEffect, useRef } from "react";
 
 function App() {
@@ -1424,8 +1423,7 @@ function App() {
       // Create WebSocket connection
       const scheme = window.location.protocol === "https:" ? "wss" : "ws";
       const port = process.env.NODE_ENV === 'development' ? ':5000' : '';
-      // const ws = new WebSocket(`${scheme}://${window.location.hostname}${port}/realtime`);
-      const ws = new WebSocket("https://ai-assistant-a8md.onrender.com/realtime");
+      const ws = new WebSocket(`${scheme}://${window.location.hostname}${port}/realtime`);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -1512,7 +1510,6 @@ function App() {
         if (ws.readyState === WebSocket.OPEN && event.data && event.data.byteLength > 0) {
           const base64data = arrayBufferToBase64(event.data);
           ws.send(JSON.stringify({ type: "audio_chunk", data: base64data }));
-          // log("📤 Sent mic audio chunk to server"); // Too verbose, comment out
         }
       };
 

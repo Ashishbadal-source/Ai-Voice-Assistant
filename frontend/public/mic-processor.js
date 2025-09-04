@@ -60,24 +60,93 @@
 
 
 
-// public/mic-processor.js
+// // public/mic-processor.js
+
+// class MicProcessor extends AudioWorkletProcessor {
+//   constructor() {
+//     super();
+//     this.sampleRate = 48000; // Default browser sample rate
+//     this.targetSampleRate = 16000; // Target for Gemini
+//     this.samples = [];
+
+//     // Listen for configuration from main thread
+//     this.port.onmessage = (event) => {
+//       if (event.data.sampleRate) {
+//         this.sampleRate = event.data.sampleRate;
+//         console.log("Mic worklet: received sampleRate", this.sampleRate);
+//       }
+//       if (event.data.targetSampleRate) {
+//         this.targetSampleRate = event.data.targetSampleRate;
+//         console.log("Mic worklet: received targetSampleRate", this.targetSampleRate);
+//       }
+//     };
+//   }
+
+//   // Downsample Float32 audio to target sample rate and convert to PCM16
+//   downsampleAndEncode(float32Audio) {
+//     const ratio = this.sampleRate / this.targetSampleRate;
+//     const outputLength = Math.floor(float32Audio.length / ratio);
+//     const pcm16 = new Int16Array(outputLength);
+    
+//     let outIdx = 0;
+//     for (let i = 0; i < float32Audio.length && outIdx < outputLength; i += ratio) {
+//       const idx = Math.floor(i);
+//       let sample = float32Audio[idx] || 0;
+      
+//       // Clamp to valid range
+//       sample = Math.max(-1, Math.min(1, sample));
+      
+//       // Convert to 16-bit PCM
+//       pcm16[outIdx] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+//       outIdx++;
+//     }
+    
+//     return pcm16;
+//   }
+
+//   process(inputs, outputs, parameters) {
+//     const input = inputs[0];
+//     const channelData = input[0];
+
+//     if (channelData && channelData.length > 0) {
+//       try {
+//         // Process the audio data
+//         const pcm16Data = this.downsampleAndEncode(channelData);
+        
+//         // Send processed data to main thread
+//         if (pcm16Data.length > 0) {
+//           this.port.postMessage(pcm16Data.buffer, [pcm16Data.buffer]);
+//         }
+//       } catch (error) {
+//         console.error("Mic worklet processing error:", error);
+//       }
+//     }
+
+//     // Keep processor alive
+//     return true;
+//   }
+// }
+
+// registerProcessor("mic-processor", MicProcessor);
+
+
+
+
 
 class MicProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.sampleRate = 48000; // Default browser sample rate
-    this.targetSampleRate = 16000; // Target for Gemini
+    this.sampleRate = 48000;
+    this.targetSampleRate = 16000;
     this.samples = [];
+    this.bufferSize = 1024; // Buffer size for sending
 
-    // Listen for configuration from main thread
     this.port.onmessage = (event) => {
       if (event.data.sampleRate) {
         this.sampleRate = event.data.sampleRate;
-        console.log("Mic worklet: received sampleRate", this.sampleRate);
       }
       if (event.data.targetSampleRate) {
         this.targetSampleRate = event.data.targetSampleRate;
-        console.log("Mic worklet: received targetSampleRate", this.targetSampleRate);
       }
     };
   }
@@ -113,7 +182,7 @@ class MicProcessor extends AudioWorkletProcessor {
         // Process the audio data
         const pcm16Data = this.downsampleAndEncode(channelData);
         
-        // Send processed data to main thread
+        // Send processed data to main thread when buffer is full
         if (pcm16Data.length > 0) {
           this.port.postMessage(pcm16Data.buffer, [pcm16Data.buffer]);
         }
