@@ -885,7 +885,7 @@ class GeminiSession:
         """Buffer audio until commit"""
         if not self.is_connected or not self.session:
             return
-        print(f"🎙️ [DEBUG] Buffering {len(audio_bytes)} bytes of audio")
+        # print(f"🎙️ [DEBUG] Buffering {len(audio_bytes)} bytes of audio")
         self.audio_buffer.extend(audio_bytes)
 
     async def commit(self):
@@ -967,7 +967,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
         async for data in websocket.iter_text():
             try:
-                print(f"📲 [DEBUG] Incoming client message: {data}")
+                # print(f"📲 [DEBUG] Incoming client message: {data}")
                 message = json.loads(data)
                 msg_type = message.get("type")
 
