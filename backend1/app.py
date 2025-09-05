@@ -764,8 +764,6 @@
 
 
 
-
-
 import asyncio
 import os
 import base64
@@ -835,20 +833,26 @@ class GeminiSession:
                 if not self.is_connected:
                     break
 
-                # Handle audio bytes
+                print(f"📩 [DEBUG] Raw Gemini event: {resp}")
+
+                # Handle raw audio stream
                 if hasattr(resp, "data") and resp.data:
+                    print(f"🎵 [DEBUG] Received {len(resp.data)} bytes of audio")
                     await self.websocket.send_json(
                         {"type": "audio", "data": b64_encode(resp.data)}
                     )
                     continue
 
-                # Handle text + transcription
+                # Handle structured server content
                 if hasattr(resp, "server_content") and resp.server_content:
                     sc = resp.server_content
+                    print(f"📝 [DEBUG] Server content: {sc}")
 
                     if hasattr(sc, "model_turn") and sc.model_turn:
+                        print("🤖 [DEBUG] Model turn received")
                         for part in sc.model_turn.parts:
                             if hasattr(part, "text") and part.text:
+                                print(f"💬 [DEBUG] Model text: {part.text}")
                                 await self.websocket.send_json(
                                     {"type": "text", "data": part.text}
                                 )
@@ -857,6 +861,7 @@ class GeminiSession:
                                 and part.inline_data
                                 and part.inline_data.data
                             ):
+                                print(f"🎧 [DEBUG] Inline audio part, size={len(part.inline_data.data)} bytes")
                                 await self.websocket.send_json(
                                     {
                                         "type": "audio",
@@ -866,6 +871,7 @@ class GeminiSession:
 
                     if hasattr(sc, "output_transcription") and sc.output_transcription:
                         if sc.output_transcription.text:
+                            print(f"🗣️ [DEBUG] Transcription: {sc.output_transcription.text}")
                             await self.websocket.send_json(
                                 {"type": "text", "data": sc.output_transcription.text}
                             )
@@ -879,17 +885,20 @@ class GeminiSession:
         """Buffer audio until commit"""
         if not self.is_connected or not self.session:
             return
+        print(f"🎙️ [DEBUG] Buffering {len(audio_bytes)} bytes of audio")
         self.audio_buffer.extend(audio_bytes)
 
     async def commit(self):
         """Send buffered audio as InputContent and request response"""
         if not self.is_connected or not self.session or not self.audio_buffer:
+            print("⚠️ [DEBUG] Nothing to commit")
             return
 
         try:
             audio_blob = genai_types.Blob(
                 data=bytes(self.audio_buffer), mime_type="audio/webm;codecs=opus"
             )
+            print(f"📤 [DEBUG] Committing {len(self.audio_buffer)} bytes of audio")
 
             await self.session.send(
                 genai_types.InputContent(
@@ -900,7 +909,7 @@ class GeminiSession:
 
             await self.session.send(genai_types.ResponseCreateEvent())
             self.audio_buffer = bytearray()
-            print("📤 Committed audio to Gemini")
+            print("✅ [DEBUG] Audio committed and ResponseCreateEvent sent")
 
         except Exception as e:
             print(f"💥 Error committing to Gemini: {e}")
@@ -912,6 +921,7 @@ class GeminiSession:
             return
 
         try:
+            print(f"📨 [DEBUG] Sending text: {text}")
             await self.session.send(
                 genai_types.InputContent(
                     parts=[genai_types.Part(text=text)],
@@ -919,6 +929,8 @@ class GeminiSession:
                 )
             )
             await self.session.send(genai_types.ResponseCreateEvent())
+            print("✅ [DEBUG] Text committed and ResponseCreateEvent sent")
+
         except Exception as e:
             print(f"💥 Error sending text to Gemini: {e}")
             traceback.print_exc()
@@ -955,6 +967,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
         async for data in websocket.iter_text():
             try:
+                print(f"📲 [DEBUG] Incoming client message: {data}")
                 message = json.loads(data)
                 msg_type = message.get("type")
 
