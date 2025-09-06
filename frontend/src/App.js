@@ -1355,6 +1355,375 @@
 // export default App;
 
 
+
+
+
+
+
+
+
+// import React, { useState, useEffect, useRef } from "react";
+
+// function App() {
+//   const [response, setResponse] = useState("");
+//   const [logMessages, setLogMessages] = useState([]);
+//   const [isConnected, setIsConnected] = useState(false);
+//   const [isListening, setIsListening] = useState(false);
+
+//   const wsRef = useRef(null);
+//   const audioCtxRef = useRef(null);
+//   const micStreamRef = useRef(null);
+//   const micSourceRef = useRef(null);
+//   const workletNodeRef = useRef(null);
+//   const playbackWorkletRef = useRef(null);
+
+//   function log(...args) {
+//     const message = args.join(" ");
+//     setLogMessages((prev) => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
+//     console.log(...args);
+//   }
+
+//   // 🔹 ArrayBuffer → Base64
+//   function arrayBufferToBase64(buffer) {
+//     let binary = "";
+//     const bytes = new Uint8Array(buffer);
+//     const chunkSize = 0x8000;
+//     for (let i = 0; i < bytes.length; i += chunkSize) {
+//       const chunk = bytes.subarray(i, i + chunkSize);
+//       binary += String.fromCharCode.apply(null, chunk);
+//     }
+//     return btoa(binary);
+//   }
+
+//   // 🔹 Base64 (Int16 PCM) → Float32 for playback
+//   function base64ToFloat32(base64) {
+//     try {
+//       const binary = atob(base64);
+//       const bytes = new Uint8Array(binary.length);
+//       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+//       const int16 = new Int16Array(bytes.buffer);
+//       const out = new Float32Array(int16.length);
+//       for (let i = 0; i < int16.length; i++) out[i] = int16[i] / 0x8000;
+//       return out;
+//     } catch (error) {
+//       log("Error decoding audio:", error);
+//       return new Float32Array(0);
+//     }
+//   }
+
+//   // ---------------------------
+//   // 🚀 Start Session
+//   // ---------------------------
+//   const start = async () => {
+//     if (wsRef.current && wsRef.current.readyState === WebSocket.CONNECTING) {
+//       log("⚠️ Connection already in progress...");
+//       return;
+//     }
+//     if (audioCtxRef.current && audioCtxRef.current.state === "running") {
+//       await stop();
+//     }
+
+//     log("🚀 Starting session...");
+//     setResponse("");
+    
+//     try {
+//       // Create WebSocket connection
+//       const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+//       const port = process.env.NODE_ENV === 'development' ? ':5000' : '';
+//       // const ws = new WebSocket(`${scheme}://${window.location.hostname}${port}/realtime`);
+//       const ws = new WebSocket("wss://ai-assistant-a8md.onrender.com/realtime");
+//       wsRef.current = ws;
+
+//       ws.onopen = () => {
+//         log("✅ WebSocket connected to backend");
+//         setIsConnected(true);
+//       };
+      
+//       ws.onerror = (e) => {
+//         log("❌ WebSocket error:", e?.message || "Connection failed");
+//         setIsConnected(false);
+//       };
+      
+//       ws.onclose = (event) => {
+//         log("⚠️ WebSocket closed:", event.code, event.reason);
+//         setIsConnected(false);
+//         setIsListening(false);
+//       };
+
+//       // 🔹 Create AudioContext for playback (24kHz matches Gemini output)
+//       const audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+//         sampleRate: 24000,
+//       });
+//       audioCtxRef.current = audioCtx;
+//       log("🎧 AudioContext created (24kHz for playback)");
+
+//       // 🔹 Load Playback Worklet
+//       log("⏳ Loading playback worklet...");
+//       await audioCtx.audioWorklet.addModule("playback-processor.js");
+//       const playbackWorklet = new AudioWorkletNode(audioCtx, "playback-processor");
+//       playbackWorklet.connect(audioCtx.destination);
+//       playbackWorkletRef.current = playbackWorklet;
+//       log("✅ Playback worklet ready");
+
+//       // 🔹 Handle Messages from server
+//       ws.onmessage = (event) => {
+//         try {
+//           const data = JSON.parse(event.data);
+
+//           if (data.type === "audio") {
+//             log("🎵 Received audio chunk from server");
+//             const float32 = base64ToFloat32(data.data);
+//             if (playbackWorkletRef.current && float32.length > 0) {
+//               playbackWorkletRef.current.port.postMessage(float32);
+//             }
+//           } else if (data.type === "text") {
+//             log("💬 Received text response:", data.data);
+//             setResponse(prev => prev + " " + data.data);
+//           } else {
+//             log("⚠️ Unknown server message type:", data.type);
+//           }
+//         } catch (error) {
+//           log("❌ Error parsing server message:", error, event.data);
+//         }
+//       };
+
+//       // 🔹 Setup Microphone
+//       log("🎤 Requesting microphone access...");
+//       const micStream = await navigator.mediaDevices.getUserMedia({ 
+//         audio: {
+//           channelCount: 1,
+//           sampleRate: 16000, // Request 16kHz if possible
+//           echoCancellation: true,
+//           noiseSuppression: true,
+//           autoGainControl: true
+//         } 
+//       });
+//       micStreamRef.current = micStream;
+//       log("✅ Microphone access granted");
+
+//       const micSource = audioCtx.createMediaStreamSource(micStream);
+//       micSourceRef.current = micSource;
+
+//       log("⏳ Loading mic worklet...");
+//       await audioCtx.audioWorklet.addModule("mic-processor.js");
+//       const micWorklet = new AudioWorkletNode(audioCtx, "mic-processor");
+
+//       // Configure worklet with current sample rate and target
+//       micWorklet.port.postMessage({ 
+//         sampleRate: audioCtx.sampleRate,
+//         targetSampleRate: 16000 
+//       });
+
+//       micWorklet.port.onmessage = (event) => {
+//         if (ws.readyState === WebSocket.OPEN && event.data && event.data.byteLength > 0) {
+//           const base64data = arrayBufferToBase64(event.data);
+//           ws.send(JSON.stringify({ type: "audio_chunk", data: base64data }));
+//         }
+//       };
+
+//       micSource.connect(micWorklet);
+//       workletNodeRef.current = micWorklet;
+//       setIsListening(true);
+//       log("✅ Mic + worklet initialized and streaming");
+
+//     } catch (err) {
+//       log("❌ Error during startup:", err);
+//       setIsConnected(false);
+//       setIsListening(false);
+//     }
+//   };
+
+//   // ---------------------------
+//   // 🛑 Stop Session
+//   // ---------------------------
+//   const stop = async () => {
+//     log("🛑 Stopping session...");
+//     setIsConnected(false);
+//     setIsListening(false);
+    
+//     try {
+//       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+//         wsRef.current.send(JSON.stringify({ type: "close" }));
+//         wsRef.current.close();
+//         log("✅ WebSocket closed by client");
+//       }
+//       wsRef.current = null;
+
+//       if (workletNodeRef.current) {
+//         workletNodeRef.current.port.onmessage = null;
+//         workletNodeRef.current.disconnect();
+//         workletNodeRef.current = null;
+//         log("🗑️ Mic worklet disconnected");
+//       }
+      
+//       if (playbackWorkletRef.current) {
+//         playbackWorkletRef.current.disconnect();
+//         playbackWorkletRef.current = null;
+//         log("🗑️ Playback worklet disconnected");
+//       }
+      
+//       if (micSourceRef.current) {
+//         micSourceRef.current.disconnect();
+//         micSourceRef.current = null;
+//         log("🗑️ Mic source disconnected");
+//       }
+      
+//       if (micStreamRef.current) {
+//         micStreamRef.current.getTracks().forEach((t) => t.stop());
+//         micStreamRef.current = null;
+//         log("🛑 Mic stream stopped");
+//       }
+      
+//       if (audioCtxRef.current) {
+//         await audioCtxRef.current.close();
+//         audioCtxRef.current = null;
+//         log("🛑 AudioContext closed");
+//       }
+//     } catch (e) {
+//       log("❌ Stop error:", e);
+//     }
+//     log("🛑 Session fully stopped.");
+//   };
+
+//   // ---------------------------
+//   // 📤 Commit Turn (manual trigger for response)
+//   // ---------------------------
+//   const commitTurn = () => {
+//     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+//       wsRef.current.send(JSON.stringify({ type: "commit" }));
+//       log("📤 Commit sent to server - requesting response");
+//     } else {
+//       log("⚠️ Cannot commit: WebSocket not connected");
+//     }
+//   };
+
+//   // Clear logs
+//   const clearLogs = () => {
+//     setLogMessages([]);
+//   };
+
+//   useEffect(() => {
+//     return () => {
+//       if (wsRef.current) stop();
+//     };
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//   }, []);
+
+//   return (
+//     <div style={{ fontFamily: "Arial, sans-serif", padding: "20px", maxWidth: "800px" }}>
+//       <h1>🎙️ Realtime Gemini Voice Chat</h1>
+      
+//       <div style={{ marginBottom: "20px" }}>
+//         <button 
+//           onClick={start} 
+//           disabled={isConnected}
+//           style={{ 
+//             marginRight: "10px", 
+//             padding: "10px 20px",
+//             backgroundColor: isConnected ? "#ccc" : "#4CAF50",
+//             color: "white",
+//             border: "none",
+//             borderRadius: "5px",
+//             cursor: isConnected ? "not-allowed" : "pointer"
+//           }}
+//         >
+//           {isConnected ? "🟢 Connected" : "Start"}
+//         </button>
+        
+//         <button 
+//           onClick={stop} 
+//           disabled={!isConnected}
+//           style={{ 
+//             marginRight: "10px", 
+//             padding: "10px 20px",
+//             backgroundColor: !isConnected ? "#ccc" : "#f44336",
+//             color: "white",
+//             border: "none",
+//             borderRadius: "5px",
+//             cursor: !isConnected ? "not-allowed" : "pointer"
+//           }}
+//         >
+//           Stop
+//         </button>
+        
+//         <button 
+//           onClick={commitTurn} 
+//           disabled={!isConnected}
+//           style={{ 
+//             marginRight: "10px",
+//             padding: "10px 20px",
+//             backgroundColor: !isConnected ? "#ccc" : "#2196F3",
+//             color: "white",
+//             border: "none",
+//             borderRadius: "5px",
+//             cursor: !isConnected ? "not-allowed" : "pointer"
+//           }}
+//         >
+//           Commit Turn
+//         </button>
+
+//         {isListening && (
+//           <span style={{ color: "green", marginLeft: "10px" }}>
+//             🎤 Listening...
+//           </span>
+//         )}
+//       </div>
+
+//       <div style={{ marginBottom: "20px" }}>
+//         <h2>💬 Gemini Response:</h2>
+//         <div style={{ 
+//           border: "1px solid #ddd", 
+//           padding: "10px", 
+//           minHeight: "60px",
+//           backgroundColor: "#f9f9f9",
+//           borderRadius: "5px"
+//         }}>
+//           {response || "No response yet..."}
+//         </div>
+//       </div>
+
+//       <div>
+//         <div style={{ display: "flex", alignItems: "center", marginBottom: "10px" }}>
+//           <h2 style={{ margin: 0, marginRight: "10px" }}>📜 Debug Logs:</h2>
+//           <button 
+//             onClick={clearLogs}
+//             style={{ 
+//               padding: "5px 10px",
+//               backgroundColor: "#ff9800",
+//               color: "white",
+//               border: "none",
+//               borderRadius: "3px",
+//               cursor: "pointer"
+//             }}
+//           >
+//             Clear Logs
+//           </button>
+//         </div>
+//         <pre style={{ 
+//           backgroundColor: "#f5f5f5", 
+//           padding: "10px", 
+//           borderRadius: "5px",
+//           maxHeight: "300px", 
+//           overflow: "auto",
+//           fontSize: "12px",
+//           whiteSpace: "pre-wrap"
+//         }}>
+//           {logMessages.length > 0 ? logMessages.join("\n") : "No logs yet..."}
+//         </pre>
+//       </div>
+//     </div>
+//   );
+// }
+
+// export default App;
+
+
+
+
+
+
+
+
 import React, { useState, useEffect, useRef } from "react";
 
 function App() {
@@ -1371,36 +1740,22 @@ function App() {
   const playbackWorkletRef = useRef(null);
 
   function log(...args) {
-    const message = args.join(" ");
+    const message = args.map(a => (typeof a === "object" ? JSON.stringify(a) : a)).join(" ");
     setLogMessages((prev) => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
     console.log(...args);
   }
 
-  // 🔹 ArrayBuffer → Base64
-  function arrayBufferToBase64(buffer) {
-    let binary = "";
-    const bytes = new Uint8Array(buffer);
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, i + chunkSize);
-      binary += String.fromCharCode.apply(null, chunk);
-    }
-    return btoa(binary);
-  }
-
-  // 🔹 Base64 (Int16 PCM) → Float32 for playback
-  function base64ToFloat32(base64) {
+  // Base64 -> ArrayBuffer
+  function base64ToArrayBuffer(base64) {
     try {
       const binary = atob(base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      const int16 = new Int16Array(bytes.buffer);
-      const out = new Float32Array(int16.length);
-      for (let i = 0; i < int16.length; i++) out[i] = int16[i] / 0x8000;
-      return out;
-    } catch (error) {
-      log("Error decoding audio:", error);
-      return new Float32Array(0);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes.buffer;
+    } catch (err) {
+      log("❌ base64ToArrayBuffer error", err);
+      return null;
     }
   }
 
@@ -1418,56 +1773,90 @@ function App() {
 
     log("🚀 Starting session...");
     setResponse("");
-    
+
     try {
-      // Create WebSocket connection
+      // WebSocket: prefer same origin (works in prod & dev when configured)
       const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-      const port = process.env.NODE_ENV === 'development' ? ':5000' : '';
-      // const ws = new WebSocket(`${scheme}://${window.location.hostname}${port}/realtime`);
-      const ws = new WebSocket("wss://ai-assistant-a8md.onrender.com/realtime");
+      const host = window.location.host;
+      // If you really want to force a host, replace the next line.
+      const wsUrl = `${scheme}://${host}/realtime`;
+      // fallback: if you previously hardcoded and want remote:
+      // const wsUrl = "wss://ai-assistant-a8md.onrender.com/realtime";
+
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        log("✅ WebSocket connected to backend");
+        log("✅ WebSocket connected to backend", wsUrl);
         setIsConnected(true);
       };
-      
-      ws.onerror = (e) => {
-        log("❌ WebSocket error:", e?.message || "Connection failed");
+
+      ws.onerror = (event) => {
+        // event is usually a simple Event object; log whole thing
+        log("❌ WebSocket error", event);
         setIsConnected(false);
       };
-      
+
       ws.onclose = (event) => {
-        log("⚠️ WebSocket closed:", event.code, event.reason);
+        log("⚠️ WebSocket closed:", event.code, event.reason || "(no reason)");
         setIsConnected(false);
         setIsListening(false);
       };
 
-      // 🔹 Create AudioContext for playback (24kHz matches Gemini output)
+      // AudioContext for playback
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)({
         sampleRate: 24000,
       });
       audioCtxRef.current = audioCtx;
       log("🎧 AudioContext created (24kHz for playback)");
 
-      // 🔹 Load Playback Worklet
-      log("⏳ Loading playback worklet...");
-      await audioCtx.audioWorklet.addModule("playback-processor.js");
-      const playbackWorklet = new AudioWorkletNode(audioCtx, "playback-processor");
-      playbackWorklet.connect(audioCtx.destination);
-      playbackWorkletRef.current = playbackWorklet;
-      log("✅ Playback worklet ready");
+      // Load playback worklet (ensure playback-processor.js is accessible in public/)
+      try {
+        log("⏳ Loading playback worklet...");
+        await audioCtx.audioWorklet.addModule("/playback-processor.js");
+        const playbackWorklet = new AudioWorkletNode(audioCtx, "playback-processor");
+        playbackWorklet.connect(audioCtx.destination);
+        playbackWorkletRef.current = playbackWorklet;
+        log("✅ Playback worklet ready");
+      } catch (err) {
+        log("❌ playback worklet load error", err);
+        // we proceed without worklet (we'll fallback to decode & play via buffer source)
+      }
 
-      // 🔹 Handle Messages from server
-      ws.onmessage = (event) => {
+      // Handle messages from server
+      ws.onmessage = async (event) => {
         try {
           const data = JSON.parse(event.data);
 
           if (data.type === "audio") {
-            log("🎵 Received audio chunk from server");
-            const float32 = base64ToFloat32(data.data);
-            if (playbackWorkletRef.current && float32.length > 0) {
-              playbackWorkletRef.current.port.postMessage(float32);
+            log("🎵 Received audio chunk from server (base64 length):", data.data?.length ?? 0);
+
+            const ab = base64ToArrayBuffer(data.data);
+            if (!ab) return;
+
+            // Try decode compressed audio to AudioBuffer
+            try {
+              const decoded = await audioCtx.decodeAudioData(ab);
+              log("🔊 Decoded audio buffer:", decoded.duration.toFixed(3) + "s", "channels:", decoded.numberOfChannels);
+
+              // If playback worklet exists, send Float32 channel data
+              if (playbackWorkletRef.current) {
+                // send first channel (mono). For stereo, you can interleave or send both.
+                const chData = decoded.getChannelData(0);
+                playbackWorkletRef.current.port.postMessage(chData);
+                log(`🔊 Sent ${chData.length} float samples to playback worklet`);
+              } else {
+                // Fallback: play via AudioBufferSourceNode
+                const src = audioCtx.createBufferSource();
+                src.buffer = decoded;
+                src.connect(audioCtx.destination);
+                src.start();
+                log("▶️ Played audio via AudioBufferSourceNode");
+              }
+            } catch (err) {
+              // decodeAudioData failed (maybe bytes not a decodable compressed chunk)
+              log("❌ decodeAudioData failed for incoming chunk", err);
+              // optionally accumulate chunks for later decode
             }
           } else if (data.type === "text") {
             log("💬 Received text response:", data.data);
@@ -1480,16 +1869,16 @@ function App() {
         }
       };
 
-      // 🔹 Setup Microphone
+      // Setup microphone
       log("🎤 Requesting microphone access...");
-      const micStream = await navigator.mediaDevices.getUserMedia({ 
+      const micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          sampleRate: 16000, // Request 16kHz if possible
+          sampleRate: 16000, // request 16k
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true
-        } 
+          autoGainControl: true,
+        }
       });
       micStreamRef.current = micStream;
       log("✅ Microphone access granted");
@@ -1498,18 +1887,32 @@ function App() {
       micSourceRef.current = micSource;
 
       log("⏳ Loading mic worklet...");
-      await audioCtx.audioWorklet.addModule("mic-processor.js");
+      await audioCtx.audioWorklet.addModule("/mic-processor.js");
       const micWorklet = new AudioWorkletNode(audioCtx, "mic-processor");
 
-      // Configure worklet with current sample rate and target
-      micWorklet.port.postMessage({ 
+      micWorklet.port.postMessage({
         sampleRate: audioCtx.sampleRate,
-        targetSampleRate: 16000 
+        targetSampleRate: 16000
       });
 
-      micWorklet.port.onmessage = (event) => {
-        if (ws.readyState === WebSocket.OPEN && event.data && event.data.byteLength > 0) {
-          const base64data = arrayBufferToBase64(event.data);
+      micWorklet.port.onmessage = (ev) => {
+        if (ws.readyState === WebSocket.OPEN && ev.data && ev.data.byteLength > 0) {
+          const base64data = (() => {
+            // if the worklet sends ArrayBuffer
+            let ab = ev.data;
+            if (ab instanceof ArrayBuffer) {
+              let binary = "";
+              const bytes = new Uint8Array(ab);
+              const chunkSize = 0x8000;
+              for (let i = 0; i < bytes.length; i += chunkSize) {
+                const chunk = bytes.subarray(i, i + chunkSize);
+                binary += String.fromCharCode.apply(null, chunk);
+              }
+              return btoa(binary);
+            }
+            // otherwise if it sends already a base64 string
+            return ev.data;
+          })();
           ws.send(JSON.stringify({ type: "audio_chunk", data: base64data }));
         }
       };
@@ -1533,7 +1936,7 @@ function App() {
     log("🛑 Stopping session...");
     setIsConnected(false);
     setIsListening(false);
-    
+
     try {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: "close" }));
@@ -1548,25 +1951,25 @@ function App() {
         workletNodeRef.current = null;
         log("🗑️ Mic worklet disconnected");
       }
-      
+
       if (playbackWorkletRef.current) {
         playbackWorkletRef.current.disconnect();
         playbackWorkletRef.current = null;
         log("🗑️ Playback worklet disconnected");
       }
-      
+
       if (micSourceRef.current) {
         micSourceRef.current.disconnect();
         micSourceRef.current = null;
         log("🗑️ Mic source disconnected");
       }
-      
+
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach((t) => t.stop());
         micStreamRef.current = null;
         log("🛑 Mic stream stopped");
       }
-      
+
       if (audioCtxRef.current) {
         await audioCtxRef.current.close();
         audioCtxRef.current = null;
@@ -1578,9 +1981,7 @@ function App() {
     log("🛑 Session fully stopped.");
   };
 
-  // ---------------------------
-  // 📤 Commit Turn (manual trigger for response)
-  // ---------------------------
+  // Commit Turn
   const commitTurn = () => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "commit" }));
@@ -1591,11 +1992,10 @@ function App() {
   };
 
   // Clear logs
-  const clearLogs = () => {
-    setLogMessages([]);
-  };
+  const clearLogs = () => setLogMessages([]);
 
   useEffect(() => {
+    log("🔔 App component mounted");
     return () => {
       if (wsRef.current) stop();
     };
@@ -1603,105 +2003,35 @@ function App() {
   }, []);
 
   return (
-    <div style={{ fontFamily: "Arial, sans-serif", padding: "20px", maxWidth: "800px" }}>
+    <div style={{ fontFamily: "Arial, sans-serif", padding: "20px", maxWidth: "900px" }}>
       <h1>🎙️ Realtime Gemini Voice Chat</h1>
-      
       <div style={{ marginBottom: "20px" }}>
-        <button 
-          onClick={start} 
-          disabled={isConnected}
-          style={{ 
-            marginRight: "10px", 
-            padding: "10px 20px",
-            backgroundColor: isConnected ? "#ccc" : "#4CAF50",
-            color: "white",
-            border: "none",
-            borderRadius: "5px",
-            cursor: isConnected ? "not-allowed" : "pointer"
-          }}
-        >
+        <button onClick={start} disabled={isConnected} style={{ marginRight: 10 }}>
           {isConnected ? "🟢 Connected" : "Start"}
         </button>
-        
-        <button 
-          onClick={stop} 
-          disabled={!isConnected}
-          style={{ 
-            marginRight: "10px", 
-            padding: "10px 20px",
-            backgroundColor: !isConnected ? "#ccc" : "#f44336",
-            color: "white",
-            border: "none",
-            borderRadius: "5px",
-            cursor: !isConnected ? "not-allowed" : "pointer"
-          }}
-        >
+        <button onClick={stop} disabled={!isConnected} style={{ marginRight: 10 }}>
           Stop
         </button>
-        
-        <button 
-          onClick={commitTurn} 
-          disabled={!isConnected}
-          style={{ 
-            marginRight: "10px",
-            padding: "10px 20px",
-            backgroundColor: !isConnected ? "#ccc" : "#2196F3",
-            color: "white",
-            border: "none",
-            borderRadius: "5px",
-            cursor: !isConnected ? "not-allowed" : "pointer"
-          }}
-        >
+        <button onClick={commitTurn} disabled={!isConnected} style={{ marginRight: 10 }}>
           Commit Turn
         </button>
-
-        {isListening && (
-          <span style={{ color: "green", marginLeft: "10px" }}>
-            🎤 Listening...
-          </span>
-        )}
+        {isListening && <span style={{ color: "green", marginLeft: 10 }}>🎤 Listening...</span>}
       </div>
 
-      <div style={{ marginBottom: "20px" }}>
+      <div style={{ marginBottom: 20 }}>
         <h2>💬 Gemini Response:</h2>
-        <div style={{ 
-          border: "1px solid #ddd", 
-          padding: "10px", 
-          minHeight: "60px",
-          backgroundColor: "#f9f9f9",
-          borderRadius: "5px"
-        }}>
+        <div style={{ border: "1px solid #ddd", padding: 10, minHeight: 60, background: "#fafafa" }}>
           {response || "No response yet..."}
         </div>
       </div>
 
       <div>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: "10px" }}>
-          <h2 style={{ margin: 0, marginRight: "10px" }}>📜 Debug Logs:</h2>
-          <button 
-            onClick={clearLogs}
-            style={{ 
-              padding: "5px 10px",
-              backgroundColor: "#ff9800",
-              color: "white",
-              border: "none",
-              borderRadius: "3px",
-              cursor: "pointer"
-            }}
-          >
-            Clear Logs
-          </button>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
+          <h2 style={{ margin: 0, marginRight: 10 }}>📜 Debug Logs:</h2>
+          <button onClick={clearLogs} style={{ padding: "5px 10px", marginLeft: 10 }}>Clear Logs</button>
         </div>
-        <pre style={{ 
-          backgroundColor: "#f5f5f5", 
-          padding: "10px", 
-          borderRadius: "5px",
-          maxHeight: "300px", 
-          overflow: "auto",
-          fontSize: "12px",
-          whiteSpace: "pre-wrap"
-        }}>
-          {logMessages.length > 0 ? logMessages.join("\n") : "No logs yet..."}
+        <pre style={{ background: "#f5f5f5", padding: 10, borderRadius: 6, maxHeight: 300, overflow: "auto" }}>
+          {logMessages.length > 0 ? logMessages.join("\n") : "No logs yet... (open browser console too)"}
         </pre>
       </div>
     </div>
