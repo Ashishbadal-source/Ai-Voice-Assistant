@@ -1165,6 +1165,7 @@ class GeminiSession:
         try:
             audio_blob = genai_types.Blob(
                 data=bytes(self.audio_buffer),
+                # mime_type="audio/webm;codecs=opus"
                 mime_type="audio/webm;codecs=opus"
             )
 

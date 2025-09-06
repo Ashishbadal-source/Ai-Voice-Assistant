@@ -1779,9 +1779,9 @@ function App() {
       const scheme = window.location.protocol === "https:" ? "wss" : "ws";
       const host = window.location.host;
       // If you really want to force a host, replace the next line.
-      // const wsUrl = `${scheme}://${host}/realtime`;
+      const wsUrl = `${scheme}://${host}/realtime`;
       // fallback: if you previously hardcoded and want remote:
-      const wsUrl = "wss://ai-assistant-a8md.onrender.com/realtime";
+      // const wsUrl = "wss://ai-assistant-a8md.onrender.com/realtime";
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
